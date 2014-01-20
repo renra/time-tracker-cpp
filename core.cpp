@@ -11,7 +11,7 @@ namespace TimeTracker{\
 
     Core(){
       this->p_conn = new pqxx::connection(
-        "dbname=time_tracking user=*** password=***"
+        "dbname=accounting user=postgres password=get_to_data"
       );
 
       this->p_trans = new pqxx::work(*this->p_conn);
