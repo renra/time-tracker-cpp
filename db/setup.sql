@@ -19,6 +19,15 @@ CREATE TABLE bank_accounts(
   currency_id INTEGER REFERENCES currencies(id)
 );
 
+CREATE TABLE bank_account_transfers(
+  id SERIAL PRIMARY KEY,
+  from_bank_account_id INTEGER REFERENCES bank_accounts(id),
+  to_bank_account_id INTEGER REFERENCES bank_accounts(id),
+  original_amount FLOAT,
+  transferred_amount FLOAT,
+  exchange_rate FLOAT
+);
+
 CREATE TABLE countries(
   id SERIAL PRIMARY KEY,
   english_name VARCHAR(50)
@@ -53,10 +62,16 @@ CREATE TABLE house_numbers(
 CREATE TABLE trade_subjects(
   id SERIAL PRIMARY KEY,
   name VARCHAR(255),
-  house_number_id INTEGER REFERENCES house_numbers(id),
   identification_number VARCHAR(20),
   VAT VARCHAR(20)
 );
+
+CREATE TABLE address_links(
+  id SERIAL PRIMARY KEY,
+  house_number_id INTEGER REFERENCES house_numbers(id) NOT NULL,
+  trade_subject_id INTEGER REFERENCES trade_subjects(id) NOT NULL
+);
+
 
 CREATE TABLE projects(
   id SERIAL PRIMARY KEY,
@@ -64,11 +79,17 @@ CREATE TABLE projects(
   name VARCHAR(255)
 );
 
+CREATE TABLE task_types(
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) UNIQUE
+);
+
 CREATE TABLE tasks(
   id SERIAL PRIMARY KEY,
   project_id INTEGER REFERENCES projects(id),
   name VARCHAR(255),
-  link VARCHAR(255)
+  link VARCHAR(255),
+  task_type_id INTEGER REFERENCES task_types(id)
 );
 
 CREATE TABLE day_entries(
@@ -93,8 +114,9 @@ CREATE TABLE accepted_payments(
   base_amount FLOAT,
   vat FLOAT,
   vat_id INTEGER REFERENCES vat_charges(id),
-  trade_subject_id INTEGER REFERENCES trade_subjects(id) NOT NULL,
-  amount FLOAT
+  currency_id INTEGER REFERENCES currencies(id),
+  bank_account_id INTEGER REFERENCES bank_accounts(id),
+  trade_subject_id INTEGER REFERENCES trade_subjects(id) NOT NULL
 );
 
 CREATE TABLE outbound_payments(
@@ -104,6 +126,7 @@ CREATE TABLE outbound_payments(
   base_amount FLOAT,
   vat FLOAT,
   vat_id INTEGER REFERENCES vat_charges(id),
+  currency_id INTEGER REFERENCES currencies(id),
   trade_subject_id INTEGER REFERENCES trade_subjects(id),
   receipt_id VARCHAR(40),
   description TEXT
@@ -116,32 +139,91 @@ CREATE TABLE invoices(
   total_time TIME
 );
 
-CREATE view day_overview as SELECT date, sum(stop - start)
-  AS total from day_entries
-  WHERE start is not null and stop is not null
-  group by date order by date;
+CREATE view recent_tasks as SELECT * FROM tasks ORDER by id DESC LIMIT 3;
+CREATE view today_stuff as SELECT * FROM day_entries WHERE date = now()::date;
 
-CREATE view month_overview as SELECT extract(YEAR from date) as year,
-  extract(MONTH from date) as month, sum(total) from day_overview
-  group by year, month;
+CREATE view current_task as
+  SELECT c.id as client_id, p.id as project_id, t.id as task_id,
+    c.name as client_name, p.name as project_name, t.name as task_name
 
-CREATE view year_overview as SELECT year, sum(sum)
-  from month_overview group by year;
+    from day_entries de
+    JOIN tasks t on de.task_id = t.id
+    JOIN projects p on t.project_id = p.id
+    JOIN trade_subjects c on p.trade_subject_id = c.id
+    where de.task_id is not null and
+    t.project_id is not null and
+    p.trade_subject_id is not null and
+    de.stop is null
+    order by de.id DESC limit 1;
 
-CREATE view task_overview as SELECT ts.id as trade_subject_id,
-  trade_subject.name as trade_subject_name,
-  p.id as project_id, p.name as project_name, t.id as task_id,
-  t.name as task_name, sum(de.stop-de.start) as total from tasks as t
-  JOIN day_entries as de on t.id = de.task_id
-  JOIN projects as p on p.id = t.project_id
-  JOIN trade_subjects as ts on ts.id = p.trade_subject_id
-  WHERE de.stop is not null group by t.id, p.id, ts.id;
 
-CREATE view project_overview as SELECT trade_subject_name, project_id,
-  project_name,
-  sum(total) from task_overview group by project_id, project_name,
-  trade_subject_name;
+CREATE view day_time_reports as
+  SELECT c.id as client_id, p.id as project_id, t.id as task_id,
+    c.name as client_name, p.name as project_name, t.name as task_name,
+    de.date, sum(de.stop - de.start) as total
 
-CREATE view trade_subject_overview as SELECT trade_subject_id,
-  trade_subject_name, sum(total)
-  from task_overview group by project_id, trade_subject_id, trade_subject_name;
+    from day_entries de
+    JOIN tasks t on t.id = de.task_id
+    JOIN projects p on t.project_id = p.id
+    JOIN trade_subjects c on p.trade_subject_id = c.id
+    WHERE de.start is not null and de.stop is not null
+    and de.task_id is not null and t.project_id is not null and
+    p.trade_subject_id is not null
+    group by de.date, t.id, p.id, c.id order by de.date DESC;
+
+CREATE view day_overview as SELECT date, sum(total) as total
+  FROM day_time_reports
+  GROUP BY date ORDER by date DESC;
+
+CREATE view recent_days as SELECT * FROM day_overview ORDER by date DESC LIMIT 7;
+CREATE view today as SELECT * FROM day_time_reports WHERE date = now()::date;
+
+CREATE view month_time_reports as
+  SELECT client_id, project_id,
+  extract(YEAR from date) as year, extract(MONTH from date) as month,
+  client_name, project_name,
+  sum(total) from day_time_reports
+  group by year, month, client_id, client_name, project_id, project_name
+  order by year, month desc;
+
+CREATE view month_overview as
+  SELECT year, month, sum(sum) from month_time_reports
+  group by year, month
+  order by year, month desc;
+
+CREATE view this_month as SELECT * from month_time_reports where
+  year = extract(YEAR from now()::date) and
+  month = extract(MONTH from now()::date);
+
+CREATE view year_time_reports as
+  SELECT client_id, project_id, year,
+  client_name, project_name, sum(sum) from month_time_reports
+  group by year, client_id, project_id, client_name, project_name
+  order by year desc;
+
+CREATE view year_overview as
+  SELECT year, sum(sum) from year_time_reports
+  group by year order by year  desc;
+
+CREATE view this_year as SELECT * from year_time_reports where
+  year = extract(YEAR from now()::date);
+
+--CREATE view task_overview as SELECT ts.id as trade_subject_id,
+--  ts.name as trade_subject_name,
+--  p.id as project_id, p.name as project_name, t.id as task_id,
+--  t.name as task_name, sum(de.stop-de.start) as total, link, task_type_id
+--  from tasks as t
+--  JOIN day_entries as de on t.id = de.task_id
+--  JOIN projects as p on p.id = t.project_id
+--  JOIN trade_subjects as ts on ts.id = p.trade_subject_id
+--  WHERE de.stop is not null group by t.id, p.id, ts.id;
+--
+--CREATE view project_overview as SELECT trade_subject_name, project_id,
+--  project_name,
+--  sum(total) from task_overview group by project_id, project_name,
+--  trade_subject_name;
+--
+--CREATE view trade_subject_overview as SELECT trade_subject_id,
+--  trade_subject_name, sum(total)
+--  from task_overview group by project_id, trade_subject_id, trade_subject_name;
+--
