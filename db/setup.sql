@@ -208,22 +208,24 @@ CREATE view year_overview as
 CREATE view this_year as SELECT * from year_time_reports where
   year = extract(YEAR from now()::date);
 
---CREATE view task_overview as SELECT ts.id as trade_subject_id,
---  ts.name as trade_subject_name,
---  p.id as project_id, p.name as project_name, t.id as task_id,
---  t.name as task_name, sum(de.stop-de.start) as total, link, task_type_id
---  from tasks as t
---  JOIN day_entries as de on t.id = de.task_id
---  JOIN projects as p on p.id = t.project_id
---  JOIN trade_subjects as ts on ts.id = p.trade_subject_id
---  WHERE de.stop is not null group by t.id, p.id, ts.id;
---
---CREATE view project_overview as SELECT trade_subject_name, project_id,
---  project_name,
---  sum(total) from task_overview group by project_id, project_name,
---  trade_subject_name;
---
---CREATE view trade_subject_overview as SELECT trade_subject_id,
---  trade_subject_name, sum(total)
---  from task_overview group by project_id, trade_subject_id, trade_subject_name;
---
+CREATE view task_overview as
+  SELECT c.id as client_id, c.name as client_name,
+    p.id as project_id, p.name as project_name,
+    t.name as task_name, sum(de.stop - de.start) as total, link
+    from tasks t
+    JOIN day_entries as de on t.id = de.task_id
+    JOIN projects as p on p.id = t.project_id
+    JOIN trade_subjects as c on c.id = p.trade_subject_id
+    WHERE de.stop is not null and de.start is not null and
+    de.task_id is not null and t.project_id is not null and
+    p.trade_subject_id is not null
+    group by t.id, p.id, c.id;
+
+CREATE view project_overview as SELECT client_id, project_id,
+  client_name, project_name,
+  sum(total)
+  from task_overview group by project_id, project_name, client_id, client_name;
+
+CREATE view client_overview as SELECT client_id, client_name, sum(total)
+  from task_overview
+  group by project_id, client_id, client_name;
