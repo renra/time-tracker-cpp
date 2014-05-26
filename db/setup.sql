@@ -1,3 +1,62 @@
+CREATE TABLE countries(
+  id SERIAL PRIMARY KEY,
+  english_name VARCHAR(50) NOT NULL
+);
+
+CREATE TABLE provinces(
+  id SERIAL PRIMARY KEY,
+  country_id INTEGER REFERENCES countries(id) NOT NULL,
+  native_name VARCHAR(20) NOT NULL
+);
+
+CREATE TABLE cities(
+  id SERIAL PRIMARY KEY,
+  country_id INTEGER REFERENCES countries(id) NOT NULL,
+  province_id INTEGER REFERENCES provinces(id),
+  postal_code VARCHAR(10),
+  name VARCHAR(50) NOT NULL
+);
+
+CREATE TABLE city_parts(
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(50) NOT NULL,
+  postal_code VARCHAR(10) NOT NULL,
+  city_id INTEGER REFERENCES cities(id) NOT NULL
+);
+
+-- either city_id or city_part_id must not be null
+CREATE TABLE streets(
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(50) NOT NULL,
+  city_id INTEGER REFERENCES cities(id),
+  city_part_id INTEGER REFERENCES city_parts(id)
+);
+
+-- either street_id or city_id not null
+CREATE TABLE house_numbers(
+  id SERIAL PRIMARY KEY,
+  street_id INTEGER REFERENCES streets(id),
+  city_id INTEGER REFERENCES cities(id),
+  value VARCHAR(10)
+);
+
+CREATE TABLE trade_subjects(
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  identification_number VARCHAR(20),
+  VAT VARCHAR(20),
+  me BOOLEAN DEFAULT false
+);
+
+CREATE TYPE address_type AS ENUM ('seat', 'correspondence', 'branch');
+
+CREATE TABLE address_links(
+  id SERIAL PRIMARY KEY,
+  type address_type DEFAULT 'seat',
+  house_number_id INTEGER REFERENCES house_numbers(id) NOT NULL,
+  trade_subject_id INTEGER REFERENCES trade_subjects(id) NOT NULL
+);
+
 CREATE TABLE currencies(
   id SERIAL PRIMARY KEY,
   short_name VARCHAR(10) NOT NULL
@@ -13,65 +72,76 @@ CREATE TABLE banks(
 CREATE TABLE bank_accounts(
   id SERIAL PRIMARY KEY,
   name VARCHAR(40),
-  number VARCHAR(20),
+  number VARCHAR(20) NOT NULL,
   iban VARCHAR(40),
-  bank_id INTEGER REFERENCES banks(id),
-  currency_id INTEGER REFERENCES currencies(id)
+  bank_id INTEGER REFERENCES banks(id) NOT NULL,
+  currency_id INTEGER REFERENCES currencies(id) NOT NULL
 );
 
-CREATE TABLE bank_account_transfers(
+CREATE TABLE exchange_rates(
   id SERIAL PRIMARY KEY,
-  from_bank_account_id INTEGER REFERENCES bank_accounts(id),
-  to_bank_account_id INTEGER REFERENCES bank_accounts(id),
-  original_amount FLOAT,
-  transferred_amount FLOAT,
-  exchange_rate FLOAT
+  rate FLOAT NOT NULL,
+  bank_id INTEGER REFERENCES banks(id) NOT NULL,
+  from_currency_id INTEGER REFERENCES currencies(id) NOT NULL,
+  to_currency_id INTEGER REFERENCES currencies(id) NOT NULL,
+  date date NOT NULL
 );
 
-CREATE TABLE countries(
-  id SERIAL PRIMARY KEY,
-  english_name VARCHAR(50)
-);
-
-CREATE TABLE provinces(
+CREATE TABLE vat_charges(
   id SERIAL PRIMARY KEY,
   country_id INTEGER REFERENCES countries(id) NOT NULL,
-  native_name VARCHAR(20)
+  percentage FLOAT NOT NULL
 );
 
-CREATE TABLE cities(
-  id SERIAL PRIMARY KEY,
-  country_id INTEGER REFERENCES countries(id),
-  province_id INTEGER REFERENCES provinces(id),
-  postal_code VARCHAR(10),
-  name VARCHAR(50)
-);
-
-CREATE TABLE streets(
-  id SERIAL PRIMARY KEY,
-  name VARCHAR(50),
-  city_id INTEGER REFERENCES cities(id)
-);
-
-CREATE TABLE house_numbers(
-  id SERIAL PRIMARY KEY,
-  street_id INTEGER REFERENCES streets(id),
-  value VARCHAR(10)
-);
-
-CREATE TABLE trade_subjects(
+CREATE TABLE articles(
   id SERIAL PRIMARY KEY,
   name VARCHAR(255),
-  identification_number VARCHAR(20),
-  VAT VARCHAR(20)
+  description VARCHAR(255),
+  unit_price FLOAT,
+  currency_id INTEGER REFERENCES currencies(id),
+  vat_id INTEGER REFERENCES vat_charges(id),
+  supplier_id INTEGER REFERENCES trade_subjects(id)
 );
 
-CREATE TABLE address_links(
+CREATE TABLE invoices(
   id SERIAL PRIMARY KEY,
-  house_number_id INTEGER REFERENCES house_numbers(id) NOT NULL,
-  trade_subject_id INTEGER REFERENCES trade_subjects(id) NOT NULL
+  sequence_number VARCHAR(10) NOT NULL,
+  supplier_id INTEGER REFERENCES trade_subjects(id) NOT NULL,
+  client_id INTEGER REFERENCES trade_subjects(id) NOT NULL,
+  generated_on date NOT NULL,
+  taxable_supply_date date NOT NULL,
+  currency_id INTEGER REFERENCES currencies(id) NOT NULL,
+  total_computed_base_amount FLOAT,
+  total_computed_vat FLOAT,
+  total_corrected_base_amount FLOAT,
+  total_corrected_vat FLOAT,
+  reverse_charge BOOLEAN DEFAULT false,
+  exchange_rate_id INTEGER REFERENCES exchange_rates(id),
+  note TEXT,
+  original_invoice bytea,
+  original_invoice_md5 varchar(100),
+  translated_invoice bytea,
+  translated_invoice_md5 varchar(100)
 );
 
+CREATE TABLE invoice_articles(
+  id SERIAL PRIMARY KEY,
+  invoice_id INTEGER REFERENCES invoices(id) NOT NULL,
+  article_id INTEGER REFERENCES articles(id) NOT NULL,
+  amount FLOAT NOT NULL,
+  note TEXT
+);
+
+CREATE TABLE payments(
+  id SERIAL PRIMARY KEY,
+  date date,
+  total_amount FLOAT,
+  currency_id INTEGER REFERENCES currencies(id),
+  bank_account_id INTEGER REFERENCES bank_accounts(id) NOT NULL,
+  sender_id INTEGER REFERENCES trade_subjects(id) NOT NULL,
+  receiver_id INTEGER REFERENCES trade_subjects(id) NOT NULL,
+  invoice_id INTEGER REFERENCES invoices(id)
+);
 
 CREATE TABLE projects(
   id SERIAL PRIMARY KEY,
@@ -101,43 +171,31 @@ CREATE TABLE day_entries(
   invoiced BOOLEAN DEFAULT false
 );
 
-CREATE TABLE vat_charges(
-  id SERIAL PRIMARY KEY,
-  country_id INTEGER REFERENCES countries(id) NOT NULL,
-  percentage FLOAT NOT NULL
-);
+CREATE view incoming_invoices as
+  SELECT i.id, i.sequence_number, ts.name as supplier, i.generated_on,
+    i.taxable_supply_date, i.total_corrected_base_amount as base,
+    i.total_corrected_vat as vat, i.reverse_charge, i.note,
+    c.short_name as currency
 
-CREATE TABLE accepted_payments(
-  id SERIAL PRIMARY KEY,
-  date date,
-  total_amount FLOAT,
-  base_amount FLOAT,
-  vat FLOAT,
-  vat_id INTEGER REFERENCES vat_charges(id),
-  currency_id INTEGER REFERENCES currencies(id),
-  bank_account_id INTEGER REFERENCES bank_accounts(id),
-  trade_subject_id INTEGER REFERENCES trade_subjects(id) NOT NULL
-);
+    from invoices as i
+    JOIN trade_subjects as ts on ts.id = i.supplier_id
+    JOIN currencies as c ON c.id = i.currency_id
+    where i.client_id IN (select id from trade_subjects where me = true)
+    order by i.taxable_supply_date DESC;
 
-CREATE TABLE outbound_payments(
-  id SERIAL PRIMARY KEY,
-  date date,
-  total_amount FLOAT,
-  base_amount FLOAT,
-  vat FLOAT,
-  vat_id INTEGER REFERENCES vat_charges(id),
-  currency_id INTEGER REFERENCES currencies(id),
-  trade_subject_id INTEGER REFERENCES trade_subjects(id),
-  receipt_id VARCHAR(40),
-  description TEXT
-);
+CREATE view outgoing_invoices as
+  SELECT i.id, i.sequence_number, ts.name as client, i.generated_on,
+    i.taxable_supply_date, i.total_corrected_base_amount as base,
+    i.total_corrected_vat as vat, i.reverse_charge, i.note,
+    c.short_name as currency,
+    (select coalesce( (select rate from exchange_rates where id = i.exchange_rate_id), 1))*i.total_corrected_base_amount as in_czk
 
-CREATE TABLE invoices(
-  id SERIAL PRIMARY KEY,
-  sequence_number VARCHAR(10),
-  trade_subject_id INTEGER REFERENCES trade_subjects(id) NOT NULL,
-  total_time TIME
-);
+    from invoices as i
+    JOIN trade_subjects as ts on ts.id = i.client_id
+    JOIN currencies as c ON c.id = i.currency_id
+    where i.supplier_id IN (select id from trade_subjects where me = true)
+    order by i.taxable_supply_date DESC;
+
 
 CREATE view recent_tasks as SELECT * FROM tasks ORDER by id DESC LIMIT 3;
 CREATE view today_stuff as SELECT * FROM day_entries WHERE date = now()::date;
@@ -150,10 +208,7 @@ CREATE view current_task as
     JOIN tasks t on de.task_id = t.id
     JOIN projects p on t.project_id = p.id
     JOIN trade_subjects c on p.trade_subject_id = c.id
-    where de.task_id is not null and
-    t.project_id is not null and
-    p.trade_subject_id is not null and
-    de.stop is null
+    where de.stop is null
     order by de.id DESC limit 1;
 
 

@@ -57,7 +57,9 @@ int main(int argc, char* argv [])
   switch(action){
     case(start): core.start_tracking(task_name); break;
     case(stop): core.stop_tracking(); break;
-    default: std::cerr << "Unknown action. This definitely should not have happened." << std::endl;
+    default: std::cerr <<
+      "Unknown action. This definitely should not have happened." <<
+      std::endl;
   }
 
   return 0;

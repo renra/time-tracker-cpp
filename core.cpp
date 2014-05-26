@@ -11,7 +11,7 @@ namespace TimeTracker{\
 
     Core(){
       this->p_conn = new pqxx::connection(
-        "dbname=accounting user=postgres password=get_to_data"
+        ""
       );
 
       this->p_trans = new pqxx::work(*this->p_conn);
@@ -73,7 +73,7 @@ namespace TimeTracker{\
     }
 
     int task_id_by_task_name(std::string task_name){
-      std::string beginning = "SELECT id from tasks WHERE name = LOWER('";
+      std::string beginning = "SELECT id from tasks WHERE LOWER(name) = LOWER('";
       std::string end = "') ORDER BY id DESC";
 
       pqxx::result result_set = this->p_trans->exec(
