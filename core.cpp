@@ -56,8 +56,6 @@ namespace TimeTracker{\
         task_name.begin(), task_name.end(), task_name.begin(), ::tolower
       );
 
-      std::cout << task_name << std::endl;
-
       pqxx::result result_set = this->p_trans->exec(
         part1 + part2 + task_name + part3
       );
