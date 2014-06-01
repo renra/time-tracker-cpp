@@ -62,8 +62,6 @@ namespace TimeTracker{\
         part1 + part2 + task_name + part3
       );
 
-      std::cout << "About to print results" << std::endl;
-
       for(auto row = result_set.begin(); row != result_set.end(); row++){
         std::cout << "\e[32m" << row[1].as<std::string>() << "\e[0m [\e[34m";
         std::cout << row[0].as<std::string>() << "\e[0m]" << std::endl;
