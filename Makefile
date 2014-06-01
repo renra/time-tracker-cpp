@@ -1,5 +1,5 @@
 all:
-	g++ -Wall main.cpp core.cpp utils.cpp -o time_tracker -I /usr/include/pqxx -lpqxx
+	g++ -std=c++11 -Wall main.cpp core.cpp utils.cpp -o time_tracker -I /usr/include/pqxx -lpqxx
 utils:
 	g++ -Wall utils.cpp -o utils
 core:

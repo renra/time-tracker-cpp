@@ -1,4 +1,5 @@
 #include <iostream>
+#include <algorithm>
 #include <pqxx/pqxx>
 #include "utils.cpp"
 
@@ -11,7 +12,7 @@ namespace TimeTracker{\
 
     Core(){
       this->p_conn = new pqxx::connection(
-        ""
+        "dbname=accounting user=renra password=get_to_data"
       );
 
       this->p_trans = new pqxx::work(*this->p_conn);
@@ -43,6 +44,29 @@ namespace TimeTracker{\
       }
       else{
         this->create_day_entry();
+      }
+    }
+
+    void search_task_name(std::string task_name){
+      std::string part1 = "SELECT p.name, t.name FROM tasks t JOIN projects p";
+      std::string part2 = " ON t.project_id = p.id WHERE t.name LIKE '%";
+      std::string part3 = "%'";
+
+      std::transform(
+        task_name.begin(), task_name.end(), task_name.begin(), ::tolower
+      );
+
+      std::cout << task_name << std::endl;
+
+      pqxx::result result_set = this->p_trans->exec(
+        part1 + part2 + task_name + part3
+      );
+
+      std::cout << "About to print results" << std::endl;
+
+      for(auto row = result_set.begin(); row != result_set.end(); row++){
+        std::cout << "\e[32m" << row[1].as<std::string>() << "\e[0m [\e[34m";
+        std::cout << row[0].as<std::string>() << "\e[0m]" << std::endl;
       }
     }
 

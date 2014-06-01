@@ -1,7 +1,7 @@
 #include <iostream>
 #include "core.cpp"
 
-enum Action {start, stop};
+enum Action {start, stop, search};
 
 int main(int argc, char* argv [])
 {
@@ -34,6 +34,10 @@ int main(int argc, char* argv [])
       action = stop;
       std::cout << "Stop tracking" << std::endl;
     }
+    else if(buffer == "--search" || buffer == "-se"){
+      action = search;
+      std::cout << "Search task name" << std::endl;
+    }
     else if(buffer == "--task-name" || buffer == "-t"){
       expect_task_name = true;
       std::cout << "Expecting task name" << std::endl;
@@ -47,8 +51,9 @@ int main(int argc, char* argv [])
     std::cerr << "Warning: task name not supplied, -t ignored" << std::endl;
   }
 
-  if(action != start && action != stop){
-    std::cerr << "Action not set. Use --start(-s) or --stop(-S)" << std::endl;
+  if(action != start && action != stop && action != search){
+    std::cerr << "Action not set. Use --start(-s) or --stop(-S) or --search(-se)";
+    std::cerr << std::endl;
     return 1;
   }
 
@@ -57,6 +62,7 @@ int main(int argc, char* argv [])
   switch(action){
     case(start): core.start_tracking(task_name); break;
     case(stop): core.stop_tracking(); break;
+    case(search): core.search_task_name(task_name); break;
     default: std::cerr <<
       "Unknown action. This definitely should not have happened." <<
       std::endl;
