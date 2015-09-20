@@ -1,0 +1,27 @@
+drop table if exists "provinces" cascade;
+drop table if exists "house_numbers" cascade;
+drop table if exists "address_links" cascade;
+drop table if exists "city_parts" cascade;
+drop table if exists "streets" cascade;
+drop table if exists "cities" cascade;
+drop table if exists "countries" cascade;
+drop table if exists "bank_accounts" cascade;
+drop table if exists "exchange_rates" cascade;
+drop table if exists "banks" cascade;
+drop table if exists "currencies" cascade;
+drop table if exists "vat_charges" cascade;
+drop table if exists "projects" cascade;
+drop table if exists "invoices" cascade;
+drop table if exists "task_types" cascade;
+drop table if exists "payments" cascade;
+drop table if exists "invoice_payments" cascade;
+drop table if exists "trade_subjects" cascade;
+drop table if exists "articles" cascade;
+drop table if exists "invoice_articles" cascade;
+drop table if exists "tasks" cascade;
+drop table if exists "day_entries" cascade;
+drop table if exists "reports" cascade;
+
+drop type if exists address_type cascade;
+drop type if exists payment_type cascade;
+drop type if exists report_type cascade;

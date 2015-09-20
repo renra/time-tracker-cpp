@@ -61,8 +61,19 @@ namespace TimeTracker{\
       );
 
       for(auto row = result_set.begin(); row != result_set.end(); row++){
-        std::cout << "\e[32m" << row[1].as<std::string>() << "\e[0m [\e[34m";
+        std::cout << "\e[32m\"" << row[1].as<std::string>() << "\"\e[0m [\e[34m";
         std::cout << row[0].as<std::string>() << "\e[0m]" << std::endl;
+      }
+    }
+
+    void get_current(){
+      pqxx::result result_set = this->p_trans->exec(
+        "SELECT task_name, project_name FROM current_task"
+      );
+
+      for(auto row = result_set.begin(); row != result_set.end(); row++){
+        std::cout << "\e[32m\"" << row[0].as<std::string>() << "\"\e[0m [\e[34m";
+        std::cout << row[1].as<std::string>() << "\e[0m]" << std::endl;
       }
     }
 

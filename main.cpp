@@ -1,7 +1,7 @@
 #include <iostream>
 #include "core.cpp"
 
-enum Action {start, stop, search};
+enum Action {start, stop, search, get_current};
 
 int main(int argc, char* argv [])
 {
@@ -21,26 +21,30 @@ int main(int argc, char* argv [])
 
     if(expect_task_name){
       task_name = buffer;
-      std::cout << "Task name set to:" << task_name << std::endl;
+      //std::cout << "Task name set to:" << task_name << std::endl;
       expect_task_name = false;
       continue;
     }
 
     if(buffer == "--start" || buffer == "-s"){
       action = start;
-      std::cout << "Start tracking" << std::endl;
+      //std::cout << "Start tracking" << std::endl;
     }
     else if(buffer == "--stop" || buffer == "-S"){
       action = stop;
-      std::cout << "Stop tracking" << std::endl;
+      //std::cout << "Stop tracking" << std::endl;
     }
     else if(buffer == "--search" || buffer == "-se"){
       action = search;
-      std::cout << "Search task name" << std::endl;
+      //std::cout << "Search task name" << std::endl;
+    }
+    else if(buffer == "--current" || buffer == "-c"){
+      action = get_current;
+      //std::cout << "Get current" << std::endl;
     }
     else if(buffer == "--task-name" || buffer == "-t"){
       expect_task_name = true;
-      std::cout << "Expecting task name" << std::endl;
+      //std::cout << "Expecting task name" << std::endl;
     }
     else{
       std::cout << "Warning:: Ignoring unknown option:" << buffer << std::endl;
@@ -51,7 +55,7 @@ int main(int argc, char* argv [])
     std::cerr << "Warning: task name not supplied, -t ignored" << std::endl;
   }
 
-  if(action != start && action != stop && action != search){
+  if(action != start && action != stop && action != search && action != get_current){
     std::cerr << "Action not set. Use --start(-s) or --stop(-S) or --search(-se)";
     std::cerr << std::endl;
     return 1;
@@ -63,6 +67,7 @@ int main(int argc, char* argv [])
     case(start): core.start_tracking(task_name); break;
     case(stop): core.stop_tracking(); break;
     case(search): core.search_task_name(task_name); break;
+    case(get_current): core.get_current(); break;
     default: std::cerr <<
       "Unknown action. This definitely should not have happened." <<
       std::endl;

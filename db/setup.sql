@@ -66,7 +66,7 @@ CREATE TABLE banks(
   id SERIAL PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
   code VARCHAR(10) NOT NULL,
-  swift VARCHAR(10) NOT NULL
+  swift VARCHAR(20) NOT NULL
 );
 
 CREATE TABLE bank_accounts(
@@ -105,17 +105,19 @@ CREATE TABLE articles(
 
 CREATE TABLE invoices(
   id SERIAL PRIMARY KEY,
-  sequence_number VARCHAR(10) NOT NULL,
+  sequence_number VARCHAR(100) NOT NULL,
   supplier_id INTEGER REFERENCES trade_subjects(id) NOT NULL,
   client_id INTEGER REFERENCES trade_subjects(id) NOT NULL,
   generated_on date NOT NULL,
   taxable_supply_date date NOT NULL,
+  due_date date,
   currency_id INTEGER REFERENCES currencies(id) NOT NULL,
   total_computed_base_amount FLOAT,
   total_computed_vat FLOAT,
   total_corrected_base_amount FLOAT,
   total_corrected_vat FLOAT,
   reverse_charge BOOLEAN DEFAULT false,
+  paid BOOLEAN DEFAULT false,
   exchange_rate_id INTEGER REFERENCES exchange_rates(id),
   note TEXT,
   original_invoice bytea,
@@ -132,15 +134,50 @@ CREATE TABLE invoice_articles(
   note TEXT
 );
 
+CREATE TYPE report_type AS ENUM (
+  'vat',
+  'reverse_charge',
+  'social',
+  'health',
+  'income'
+);
+
+CREATE TABLE reports(
+  id SERIAL PRIMARY KEY,
+  date date NOT NULL,
+  type report_type NOT NULL,
+  to_pay FLOAT,
+  to_receive FLOAT
+);
+
+CREATE TYPE payment_type AS ENUM (
+  'vat',
+  'health_insurance',
+  'social_insurance',
+  'income_tax',
+  'invoice',
+  'salary'
+);
+
 CREATE TABLE payments(
   id SERIAL PRIMARY KEY,
-  date date,
-  total_amount FLOAT,
-  currency_id INTEGER REFERENCES currencies(id),
-  bank_account_id INTEGER REFERENCES bank_accounts(id) NOT NULL,
+  date date NOT NULL,
+  amount FLOAT DEFAULT 0.0,
+  type payment_type NOT NULL,
+  currency_id INTEGER REFERENCES currencies(id) NOT NULL,
+  bank_account_id INTEGER REFERENCES bank_accounts(id),
   sender_id INTEGER REFERENCES trade_subjects(id) NOT NULL,
   receiver_id INTEGER REFERENCES trade_subjects(id) NOT NULL,
-  invoice_id INTEGER REFERENCES invoices(id)
+  vat_report_id INTEGER REFERENCES reports(id),
+  income_report_id INTEGER REFERENCES reports(id)
+);
+
+CREATE TABLE invoice_payments(
+  id SERIAL PRIMARY KEY,
+  amount FLOAT DEFAULT 0.0,   -- DROP this
+  payment_id INTEGER REFERENCES payments(id) NOT NULL,
+  invoice_id INTEGER REFERENCES invoices(id) NOT NULL,
+  exchange_rate_id INTEGER REFERENCES exchange_rates(id)
 );
 
 CREATE TABLE projects(
@@ -188,7 +225,8 @@ CREATE view outgoing_invoices as
     i.taxable_supply_date, i.total_corrected_base_amount as base,
     i.total_corrected_vat as vat, i.reverse_charge, i.note,
     c.short_name as currency,
-    (select coalesce( (select rate from exchange_rates where id = i.exchange_rate_id), 1))*i.total_corrected_base_amount as in_czk
+    (select coalesce( (select rate from exchange_rates where id = i.exchange_rate_id), 1) )*i.total_corrected_base_amount as base_in_czk,
+    (select coalesce( (select rate from exchange_rates where id = i.exchange_rate_id), 1) )*(i.total_corrected_base_amount + i.total_corrected_vat) as total_in_czk
 
     from invoices as i
     JOIN trade_subjects as ts on ts.id = i.client_id
@@ -196,6 +234,27 @@ CREATE view outgoing_invoices as
     where i.supplier_id IN (select id from trade_subjects where me = true)
     order by i.taxable_supply_date DESC;
 
+CREATE view incoming_payments as
+  SELECT p.id, p.date, ts.name as supplier,
+    p.amount, c.short_name as currency,
+    (select sum(coalesce(er.rate, 1)*ip.amount) from invoice_payments as ip LEFT OUTER JOIN exchange_rates as er ON er.id = ip.exchange_rate_id where ip.payment_id = p.id) as in_czk
+
+    from payments as p
+    JOIN trade_subjects as ts on ts.id = p.sender_id
+    JOIN currencies as c ON c.id = p.currency_id
+    where p.receiver_id IN (select id from trade_subjects where me = true)
+    order by p.date DESC;
+
+CREATE view outgoing_payments as
+  SELECT p.id, p.date, ts.name as client,
+    p.amount, c.short_name as currency,
+    (select sum(coalesce(er.rate, 1)*ip.amount) from invoice_payments as ip LEFT OUTER JOIN exchange_rates as er ON er.id = ip.exchange_rate_id where ip.payment_id = p.id) as in_czk
+
+    from payments as p
+    JOIN trade_subjects as ts on ts.id = p.receiver_id
+    JOIN currencies as c ON c.id = p.currency_id
+    where p.sender_id IN (select id from trade_subjects where me = true)
+    order by p.date DESC;
 
 CREATE view recent_tasks as SELECT * FROM tasks ORDER by id DESC LIMIT 3;
 CREATE view today_stuff as SELECT * FROM day_entries WHERE date = now()::date;
